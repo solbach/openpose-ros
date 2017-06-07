@@ -1,18 +1,7 @@
-// ------------------------- OpenPose Library Tutorial - Pose - Example 1 - Extract from Image -------------------------
-// This first example shows the user how to:
-    // 1. Load an image (`filestream` module)
-    // 2. Extract the pose of that image (`pose` module)
-    // 3. Render the pose on a resized copy of the input image (`pose` module)
-    // 4. Display the rendered pose (`gui` module)
-// In addition to the previous OpenPose modules, we also need to use:
-    // 1. `core` module: for the Array<float> class that the `pose` module needs
-    // 2. `utilities` module: for the error & logging functions, i.e. op::error & op::log respectively
-
 #define USE_CAFFE
-// 3rdpary depencencies
-#include <gflags/gflags.h> // DEFINE_bool, DEFINE_int32, DEFINE_int64, DEFINE_uint64, DEFINE_double, DEFINE_string
-#include <glog/logging.h> // google::InitGoogleLogging, CHECK, CHECK_EQ, LOG, VLOG, ...
-// OpenPose dependencies
+#include <gflags/gflags.h>
+#include <glog/logging.h>
+
 #include <openpose/core/headers.hpp>
 #include <openpose/filestream/headers.hpp>
 #include <openpose/gui/headers.hpp>
@@ -21,25 +10,21 @@
 
 #include "ros/ros.h"
 #include <std_srvs/Empty.h>
-#include <ros/node_handle.h>
-#include <ros/service_server.h>
-#include <ros/init.h>
 #include <cv_bridge/cv_bridge.h>
 #include <image_transport/image_transport.h>
 #include <openpose_ros/Person.h>
-#include <chrono>
 
 std::map<unsigned int, std::string> g_bodypart_map;
-cv::Size g_net_input_size;
-int g_num_scales;
-double g_scale_gap;
-cv::Size output_size;
-cv::Size net_output_size;
-std::string model_folder;
-unsigned int num_gpu_start;
-op::PoseModel pose_model;
-double alpha_pose;
-int logging_level;
+cv::Size netInputSize;
+int numScales;
+double scaleGap;
+cv::Size outputSize;
+cv::Size netOutputSize;
+std::string modelFolder;
+unsigned int numGpuStart;
+op::PoseModel poseModel;
+double alphaPose;
+int loggingLevel;
 std::chrono::high_resolution_clock::time_point start, end;
 
 template <typename T>
@@ -102,26 +87,26 @@ bool initOpenPose(){
 
     /* Prepare all classes */
     openPoseCvMatToOpInput = std::shared_ptr<op::CvMatToOpInput>(
-            new op::CvMatToOpInput(g_net_input_size, g_num_scales, (float)g_scale_gap)
+            new op::CvMatToOpInput(netInputSize, numScales, (float)scaleGap)
     );
 
     openPoseCvMatToOpOutput = std::shared_ptr<op::CvMatToOpOutput>(
-            new op::CvMatToOpOutput(output_size)
+            new op::CvMatToOpOutput(outputSize)
     );
 
     openPosePoseExtractorCaffe = std::shared_ptr<op::PoseExtractorCaffe>(
-            new op::PoseExtractorCaffe(g_net_input_size, net_output_size, output_size, g_num_scales, (float)g_scale_gap, pose_model,
-                                       model_folder, 0)
+            new op::PoseExtractorCaffe(netInputSize, netOutputSize, outputSize, numScales, (float)scaleGap, poseModel,
+                                       modelFolder, 0)
     );
 
-    op::ConfigureLog::setPriorityThreshold((op::Priority)logging_level);
+    op::ConfigureLog::setPriorityThreshold((op::Priority)loggingLevel);
 
     openPosePoseRenderer = std::shared_ptr<op::PoseRenderer>(
-            new op::PoseRenderer(net_output_size, output_size, pose_model, nullptr, (float)alpha_pose)
+            new op::PoseRenderer(netOutputSize, outputSize, poseModel, nullptr, (float)alphaPose)
     );
 
     openPoseOpOutputToCvMat = std::shared_ptr<op::OpOutputToCvMat>(
-            new op::OpOutputToCvMat(output_size)
+            new op::OpOutputToCvMat(outputSize)
     );
 
     /* Initialize everything */
@@ -151,7 +136,7 @@ bool detectPosesCallback(openpose_ros::PersonRequest& req, openpose_ros::PersonR
     // init response
     initResponse(res);
 
-    ROS_INFO("[Called] Start");
+    ROS_INFO("[Called] ######## Start ########");
     start = std::chrono::high_resolution_clock::now();
     // Convert ROS message to opencv image
     cv_bridge::CvImagePtr cv_ptr;
@@ -165,8 +150,6 @@ bool detectPosesCallback(openpose_ros::PersonRequest& req, openpose_ros::PersonR
         return false;
     }
     cv::Mat imageCV = cv_ptr->image;
-    //cv::Mat imageCV = cv::imread("/home/markus/git/jtl/Fallen Person/CMU-OpenPose/openpose/examples/fallen/fallen_test.jpg", CV_LOAD_IMAGE_COLOR);
-
     if(imageCV.empty()) {
         op::error("Could not open or find the image");
         //res.result = -1;
@@ -185,7 +168,7 @@ bool detectPosesCallback(openpose_ros::PersonRequest& req, openpose_ros::PersonR
 
     // Show Results
     /*
-    const cv::Size windowedSize = output_size;
+    const cv::Size windowedSize = outputSize;
     op::FrameDisplayer frameDisplayer{windowedSize, "OpenPose ROS Wrapper - DEBUG Window"};
     frameDisplayer.displayFrame(outputImage, 1);
     */
@@ -245,24 +228,26 @@ bool detectPosesCallback(openpose_ros::PersonRequest& req, openpose_ros::PersonR
     end = std::chrono::high_resolution_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>( end - start ).count();
     ROS_INFO("[Called] Finished in %ldms", duration);
+    ROS_INFO("[Called] #######################");
     return true;
 }
 
 int main(int argc, char *argv[])
 {
-    ros::init(argc, argv, "openpose_ros");
+    google::InitGoogleLogging("openpose_ros_node");
+    ros::init(argc, argv, "openpose_ros_node");
     ros::NodeHandle local_nh("~");
-    g_net_input_size = cv::Size(getParam(local_nh, "net_input_width", 656), getParam(local_nh, "net_input_height", 368));
-    net_output_size = cv::Size(getParam(local_nh, "net_output_width", 656), getParam(local_nh, "net_output_height", 368));
-    output_size = cv::Size(getParam(local_nh, "output_width", 1280), getParam(local_nh, "output_height", 720));
-    g_num_scales = getParam(local_nh, "num_scales", 1);
-    g_scale_gap = getParam(local_nh, "scale_gap", 0.3);
-    num_gpu_start = getParam(local_nh, "num_gpu_start", 0);
-    model_folder = getParam(local_nh, "model_folder", std::string("/home/markus/git/jtl/Fallen Person/CMU-OpenPose/openpose/models/"));
-    pose_model = stringToPoseModel(getParam(local_nh, "pose_model", std::string("COCO")));
-    g_bodypart_map = getBodyPartMapFromPoseModel(pose_model);
-    alpha_pose = 0.6; // Blending factor (range 0-1) for the body part rendering.
-    logging_level = 200; // The logging level. Integer in the range [0, 255]. 0 -> Everything, 255 -> Nothing
+    netInputSize = cv::Size(getParam(local_nh, "net_input_width", 656), getParam(local_nh, "net_input_height", 368));
+    netOutputSize = cv::Size(getParam(local_nh, "net_output_width", 656), getParam(local_nh, "net_output_height", 368));
+    outputSize = cv::Size(getParam(local_nh, "output_width", 1280), getParam(local_nh, "output_height", 720));
+    numScales = getParam(local_nh, "num_scales", 1);
+    scaleGap = getParam(local_nh, "scale_gap", 0.3);
+    numGpuStart = getParam(local_nh, "numGpuStart", 0);
+    modelFolder = getParam(local_nh, "modelFolder", std::string("/home/markus/git/jtl/Fallen Person/CMU-OpenPose/openpose/models/"));
+    poseModel = stringToPoseModel(getParam(local_nh, "poseModel", std::string("COCO")));
+    g_bodypart_map = getBodyPartMapFromPoseModel(poseModel);
+    alphaPose = 0.6; // Blending factor (range 0-1) for the body part rendering.
+    loggingLevel = 200; // The logging level. Integer in the range [0, 255]. 0 -> Everything, 255 -> Nothing
 
     if(!initOpenPose()){
         ROS_ERROR("[Init OpenPose] ERROR");
