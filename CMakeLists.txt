@@ -18,6 +18,12 @@ find_package(catkin REQUIRED COMPONENTS
   message_generation
 )
 
+add_message_files(
+        FILES
+        Bodypart.msg
+        PersonDetection.msg
+)
+
 add_service_files( DIRECTORY srv
         FILES
         Person.srv
@@ -68,8 +74,8 @@ target_link_libraries(${PROJECT_NAME}_node
   ${OPENPOSE_LINK_LIBRARY}
 )
 
-MESSAGE(OpenCV_VERSION: ${OpenCV_VERSION})
-MESSAGE(OpenCV_INCLUDE_DIRS: ${OpenCV_INCLUDE_DIRS})
+#MESSAGE(OpenCV_VERSION: ${OpenCV_VERSION})
+#MESSAGE(OpenCV_INCLUDE_DIRS: ${OpenCV_INCLUDE_DIRS})
 
 #get_cmake_property(_variableNames VARIABLES)
 #foreach (_variableName ${_variableNames})

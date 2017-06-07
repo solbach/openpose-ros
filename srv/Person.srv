@@ -10,4 +10,4 @@ sensor_msgs/Image image
   uint32 step
   uint8[] data
 ---
-uint32 result
+PersonDetection[] detections

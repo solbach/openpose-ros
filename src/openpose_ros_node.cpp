@@ -151,7 +151,7 @@ bool detectPosesCallback(openpose_ros::PersonRequest& req, openpose_ros::PersonR
 
     if(imageCV.empty()) {
         op::error("Could not open or find the image");
-        res.result = -1;
+        //res.result = -1;
         return false;
     }
 
@@ -169,7 +169,6 @@ bool detectPosesCallback(openpose_ros::PersonRequest& req, openpose_ros::PersonR
     auto outputImage = openPoseOpOutputToCvMat->formatToCvMat(outputArray);
 
     // Show Results
-
     const cv::Size windowedSize = output_size;
     op::FrameDisplayer frameDisplayer{windowedSize, "OpenPose ROS Wrapper - DEBUG Window"};
     frameDisplayer.displayFrame(outputImage, 1);
@@ -210,7 +209,7 @@ bool detectPosesCallback(openpose_ros::PersonRequest& req, openpose_ros::PersonR
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>( end - start ).count();
     ROS_INFO("[Called] Finished in %ld ms", duration);
 
-    res.result = 5;
+    //res.detections(0)->  = 5;
     return true;
 }
 
