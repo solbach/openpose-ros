@@ -1,2 +1,2 @@
-uint32 avgConfidence
+float32 avgConfidence
 Bodypart[] bodyparts

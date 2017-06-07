@@ -130,8 +130,25 @@ bool initOpenPose(){
     return true;
 }
 
+void initResponse(openpose_ros::PersonResponse& res){
+    for (auto i = 0; i < 1; ++i) {
+        openpose_ros::PersonDetection person;
+        person.avgConfidence = NAN;
+        for (auto j = 0; i < 18; ++i) {
+            openpose_ros::Bodypart part;
+            part.confidence = NAN;
+            part.name = NAN;
+            part.x = NAN;
+            part.y = NAN;
+            person.bodyparts.push_back(part);
+        }
+        res.detections.push_back(person);
+    }
+}
 
 bool detectPosesCallback(openpose_ros::PersonRequest& req, openpose_ros::PersonResponse& res){
+    // init response
+    initResponse(res);
 
     ROS_INFO("[Called] ...");
     start = std::chrono::high_resolution_clock::now();
@@ -185,29 +202,65 @@ bool detectPosesCallback(openpose_ros::PersonRequest& req, openpose_ros::PersonR
     int bodyparts;
     std::string bodypartdesc;
 
-
+    // Iterate over each detected Person
     for(auto person_count = 0; person_count < persons; person_count++){
+        ROS_WARN("People detected: %d", persons);
+
+        res.detections.clear();
         bodyparts = poseKeyPoints.getSize(1);
-        ROS_WARN("BODYPARTS DETECTED: %d", bodyparts);
+        float avgConfidence = 0;
+        int partTakenIntoAccount = 0;
+        openpose_ros::PersonDetection person;
 
+        // Iterate over each bodypart of Person(i)
         for(auto body_count = 0; body_count < bodyparts; body_count++){
-            bodypartdesc = g_bodypart_map[body_count];
-
+            openpose_ros::Bodypart part;
+            part.name = g_bodypart_map[body_count]; // What are we looking at here (bodypart name)
             int index_bodymap = 3*(person_count*bodyparts + body_count);
-            int xCoordinate = poseKeyPoints[index_bodymap]; // X-Coordinate
-            int yCoordinate = poseKeyPoints[index_bodymap+1]; // Y-Coordinate
-            double confidence = poseKeyPoints[index_bodymap+2]; // Confidence
-
-            std::cout << "PART: " << bodypartdesc << std::endl;
-            std::cout << "\t x: " << xCoordinate << ", y: " << yCoordinate << std::endl;
-            std::cout << "\t confidence: " << confidence << std::endl;
+            part.x = poseKeyPoints[index_bodymap]; // X-Coordinate
+            part.y = poseKeyPoints[index_bodymap+1]; // Y-Coordinate
+            part.confidence = poseKeyPoints[index_bodymap+2]; // Confidence
+            person.bodyparts.push_back(part);
+            // Only take into account bodypart with a cofidence higher a certain value for the average confidence calculation
+            if(part.confidence > 0.1){
+                partTakenIntoAccount++;
+                avgConfidence += part.confidence;
+            }
+            // std::cout << "PART: " << part.name << std::endl;
+            // std::cout << "Confidence: " << part.confidence<< std::endl;
+            // std::cout << "Location: " << part.x << ", " << part.y << std::endl;
         }
+        if(partTakenIntoAccount > 0) {
+            avgConfidence /= partTakenIntoAccount; // Take the average
+        } else{
+            avgConfidence = 0.0;
+        }
+
+        person.avgConfidence = avgConfidence;
+        res.detections.push_back(person);
     }
 
 
     end = std::chrono::high_resolution_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>( end - start ).count();
     ROS_INFO("[Called] Finished in %ld ms", duration);
+    std::cout << "avgConfidence: " << res.detections[0].avgConfidence << std::endl;
+    /*
+    openpose_ros::Bodypart part;
+    part.confidence = 0.5;
+    part.name = "Elbow";
+    part.x = 120;
+    part.y = 80;
+
+    //openpose_ros::PersonResponse res;
+    openpose_ros::PersonDetection person;
+    person.avgConfidence = 0.1;
+    person.bodyparts.push_back(part);
+    res.detections.push_back(person);
+    */
+
+    //person.detections.push_back(part);
+
 
     //res.detections(0)->  = 5;
     return true;
