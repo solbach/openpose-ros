@@ -25,6 +25,7 @@
 #include <ros/service_server.h>
 #include <ros/init.h>
 #include <cv_bridge/cv_bridge.h>
+#include <image_transport/image_transport.h>
 #include <openpose_ros/Person.h>
 #include <chrono>
 
@@ -150,7 +151,7 @@ bool detectPosesCallback(openpose_ros::PersonRequest& req, openpose_ros::PersonR
     // init response
     initResponse(res);
 
-    ROS_INFO("[Called] ...");
+    ROS_INFO("[Called] Start");
     start = std::chrono::high_resolution_clock::now();
     // Convert ROS message to opencv image
     cv_bridge::CvImagePtr cv_ptr;
@@ -174,22 +175,20 @@ bool detectPosesCallback(openpose_ros::PersonRequest& req, openpose_ros::PersonR
 
     // Pose Estimation
     const auto netInputArray = openPoseCvMatToOpInput->format(imageCV);
-
     double scaleInputToOutput;
     op::Array<float> outputArray;
     std::tie(scaleInputToOutput, outputArray) = openPoseCvMatToOpOutput->format(imageCV);
-
     openPosePoseExtractorCaffe->forwardPass(netInputArray, imageCV.size());
     const auto poseKeyPoints = openPosePoseExtractorCaffe->getPoseKeyPoints();
-
     openPosePoseRenderer->renderPose(outputArray, poseKeyPoints);
     auto outputImage = openPoseOpOutputToCvMat->formatToCvMat(outputArray);
 
     // Show Results
+    /*
     const cv::Size windowedSize = output_size;
     op::FrameDisplayer frameDisplayer{windowedSize, "OpenPose ROS Wrapper - DEBUG Window"};
     frameDisplayer.displayFrame(outputImage, 1);
-
+    */
 
     // Prepare Response Message
     if (!poseKeyPoints.empty() && poseKeyPoints.getNumberDimensions() != 3)
@@ -202,10 +201,16 @@ bool detectPosesCallback(openpose_ros::PersonRequest& req, openpose_ros::PersonR
     int bodyparts;
     std::string bodypartdesc;
 
+    if(persons){
+        ROS_INFO("[Called] People detected: %d", persons);
+        // Add Image to response
+        sensor_msgs::Image imgMsg = *cv_bridge::CvImage(std_msgs::Header(), "bgr8", outputImage).toImageMsg();
+        res.detection_img = imgMsg;
+    }else{
+        ROS_WARN("[Called] People detected: %d", persons);
+    }
     // Iterate over each detected Person
     for(auto person_count = 0; person_count < persons; person_count++){
-        ROS_WARN("People detected: %d", persons);
-
         res.detections.clear();
         bodyparts = poseKeyPoints.getSize(1);
         float avgConfidence = 0;
@@ -221,14 +226,11 @@ bool detectPosesCallback(openpose_ros::PersonRequest& req, openpose_ros::PersonR
             part.y = poseKeyPoints[index_bodymap+1]; // Y-Coordinate
             part.confidence = poseKeyPoints[index_bodymap+2]; // Confidence
             person.bodyparts.push_back(part);
-            // Only take into account bodypart with a cofidence higher a certain value for the average confidence calculation
+            // Only take into account bodypart with a confidence higher than a certain value for the average confidence calculation
             if(part.confidence > 0.1){
                 partTakenIntoAccount++;
                 avgConfidence += part.confidence;
             }
-            // std::cout << "PART: " << part.name << std::endl;
-            // std::cout << "Confidence: " << part.confidence<< std::endl;
-            // std::cout << "Location: " << part.x << ", " << part.y << std::endl;
         }
         if(partTakenIntoAccount > 0) {
             avgConfidence /= partTakenIntoAccount; // Take the average
@@ -240,29 +242,9 @@ bool detectPosesCallback(openpose_ros::PersonRequest& req, openpose_ros::PersonR
         res.detections.push_back(person);
     }
 
-
     end = std::chrono::high_resolution_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>( end - start ).count();
-    ROS_INFO("[Called] Finished in %ld ms", duration);
-    std::cout << "avgConfidence: " << res.detections[0].avgConfidence << std::endl;
-    /*
-    openpose_ros::Bodypart part;
-    part.confidence = 0.5;
-    part.name = "Elbow";
-    part.x = 120;
-    part.y = 80;
-
-    //openpose_ros::PersonResponse res;
-    openpose_ros::PersonDetection person;
-    person.avgConfidence = 0.1;
-    person.bodyparts.push_back(part);
-    res.detections.push_back(person);
-    */
-
-    //person.detections.push_back(part);
-
-
-    //res.detections(0)->  = 5;
+    ROS_INFO("[Called] Finished in %ldms", duration);
     return true;
 }
 
