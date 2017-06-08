@@ -14,7 +14,8 @@
 #include <image_transport/image_transport.h>
 #include <openpose_ros/Person.h>
 
-std::map<unsigned int, std::string> g_bodypart_map;
+std::map<unsigned int, std::string> bodypartMap;
+bool blendOrigFrame;
 cv::Size netInputSize;
 int numScales;
 double scaleGap;
@@ -101,8 +102,10 @@ bool initOpenPose(){
 
     op::ConfigureLog::setPriorityThreshold((op::Priority)loggingLevel);
 
+
+
     openPosePoseRenderer = std::shared_ptr<op::PoseRenderer>(
-            new op::PoseRenderer(netOutputSize, outputSize, poseModel, nullptr, (float)alphaPose)
+            new op::PoseRenderer(netOutputSize, outputSize, poseModel, nullptr, blendOrigFrame, (float)alphaPose)
     );
 
     openPoseOpOutputToCvMat = std::shared_ptr<op::OpOutputToCvMat>(
@@ -184,11 +187,12 @@ bool detectPosesCallback(openpose_ros::PersonRequest& req, openpose_ros::PersonR
     int bodyparts;
     std::string bodypartdesc;
 
+    // Add Image to response
+    sensor_msgs::Image imgMsg = *cv_bridge::CvImage(std_msgs::Header(), "bgr8", outputImage).toImageMsg();
+    res.detection_img = imgMsg;
+
     if(persons){
         ROS_INFO("[Called] People detected: %d", persons);
-        // Add Image to response
-        sensor_msgs::Image imgMsg = *cv_bridge::CvImage(std_msgs::Header(), "bgr8", outputImage).toImageMsg();
-        res.detection_img = imgMsg;
     }else{
         ROS_WARN("[Called] People detected: %d", persons);
     }
@@ -203,7 +207,7 @@ bool detectPosesCallback(openpose_ros::PersonRequest& req, openpose_ros::PersonR
         // Iterate over each bodypart of Person(i)
         for(auto body_count = 0; body_count < bodyparts; body_count++){
             openpose_ros::Bodypart part;
-            part.name = g_bodypart_map[body_count]; // What are we looking at here (bodypart name)
+            part.name = bodypartMap[body_count]; // What are we looking at here (bodypart name)
             int index_bodymap = 3*(person_count*bodyparts + body_count);
             part.x = poseKeyPoints[index_bodymap]; // X-Coordinate
             part.y = poseKeyPoints[index_bodymap+1]; // Y-Coordinate
@@ -245,9 +249,10 @@ int main(int argc, char *argv[])
     numGpuStart = getParam(local_nh, "numGpuStart", 0);
     modelFolder = getParam(local_nh, "modelFolder", std::string("/home/markus/git/jtl/Fallen Person/CMU-OpenPose/openpose/models/"));
     poseModel = stringToPoseModel(getParam(local_nh, "poseModel", std::string("COCO")));
-    g_bodypart_map = getBodyPartMapFromPoseModel(poseModel);
-    alphaPose = 0.6; // Blending factor (range 0-1) for the body part rendering.
+    bodypartMap = getBodyPartMapFromPoseModel(poseModel);
+    alphaPose = 0.99; // Blending factor (range 0-1) for the body part rendering.
     loggingLevel = 200; // The logging level. Integer in the range [0, 255]. 0 -> Everything, 255 -> Nothing
+    blendOrigFrame = false;
 
     if(!initOpenPose()){
         ROS_ERROR("[Init OpenPose] ERROR");
