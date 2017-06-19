@@ -196,9 +196,10 @@ bool detectPosesCallback(openpose_ros::PersonRequest& req, openpose_ros::PersonR
     }else{
         ROS_WARN("[Called] People detected: %d", persons);
     }
+    // clear everything we got so far
+    res.detections.clear();
     // Iterate over each detected Person
     for(auto person_count = 0; person_count < persons; person_count++){
-        res.detections.clear();
         bodyparts = poseKeyPoints.getSize(1);
         float avgConfidence = 0;
         int partTakenIntoAccount = 0;
