@@ -1,5 +1,12 @@
+//#include<iostream>
 #define USE_CAFFE
+
 #include <gflags/gflags.h>
+// Allow Google Flags in Ubuntu 14
+#ifndef GFLAGS_GFLAGS_H_
+    namespace gflags = google;
+#endif
+
 #include <glog/logging.h>
 
 #include <openpose/core/headers.hpp>
@@ -13,6 +20,46 @@
 #include <cv_bridge/cv_bridge.h>
 #include <image_transport/image_transport.h>
 #include <openpose_ros/Person.h>
+
+DEFINE_int32(logging_level,             3,              "The logging level. Integer in the range [0, 255]. 0 will output any log() message, while"
+                                                        " 255 will not output any. Current OpenPose library messages are in the range 0-4: 1 for"
+                                                        " low priority messages and 4 for important ones.");
+// Producer
+DEFINE_string(image_path,               "examples/media/COCO_val2014_000000000192.jpg",     "Process the desired image.");
+// OpenPose
+DEFINE_string(model_pose,               "COCO",         "Model to be used. E.g. `COCO` (18 keypoints), `MPI` (15 keypoints, ~10% faster), "
+                                                        "`MPI_4_layers` (15 keypoints, even faster but less accurate).");
+DEFINE_string(model_folder,             "models/",      "Folder path (absolute or relative) where the models (pose, face, ...) are located.");
+DEFINE_string(net_resolution,           "-1x368",       "Multiples of 16. If it is increased, the accuracy potentially increases. If it is"
+                                                        " decreased, the speed increases. For maximum speed-accuracy balance, it should keep the"
+                                                        " closest aspect ratio possible to the images or videos to be processed. Using `-1` in"
+                                                        " any of the dimensions, OP will choose the optimal aspect ratio depending on the user's"
+                                                        " input value. E.g. the default `-1x368` is equivalent to `656x368` in 16:9 resolutions,"
+                                                        " e.g. full HD (1980x1080) and HD (1280x720) resolutions.");
+DEFINE_string(output_resolution,        "-1x-1",        "The image resolution (display and output). Use \"-1x-1\" to force the program to use the"
+                                                        " input image resolution.");
+DEFINE_int32(num_gpu_start,             0,              "GPU device start number.");
+DEFINE_double(scale_gap,                0.3,            "Scale gap between scales. No effect unless scale_number > 1. Initial scale is always 1."
+                                                        " If you want to change the initial scale, you actually want to multiply the"
+                                                        " `net_resolution` by your desired initial scale.");
+DEFINE_int32(scale_number,              1,              "Number of scales to average.");
+// OpenPose Rendering
+DEFINE_int32(part_to_show,              19,             "Prediction channel to visualize (default: 0). 0 for all the body parts, 1-18 for each body"
+                                                        " part heat map, 19 for the background heat map, 20 for all the body part heat maps"
+                                                        " together, 21 for all the PAFs, 22-40 for each body part pair PAF");
+DEFINE_bool(disable_blending,           false,          "If enabled, it will render the results (keypoint skeletons or heatmaps) on a black"
+                                                        " background, instead of being rendered into the original image. Related: `part_to_show`,"
+                                                        " `alpha_pose`, and `alpha_pose`.");
+DEFINE_double(render_threshold,         0.05,           "Only estimated keypoints whose score confidences are higher than this threshold will be"
+                                                        " rendered. Generally, a high threshold (> 0.5) will only render very clear body parts;"
+                                                        " while small thresholds (~0.1) will also output guessed and occluded keypoints, but also"
+                                                        " more false positives (i.e. wrong detections).");
+DEFINE_double(alpha_pose,               0.6,            "Blending factor (range 0-1) for the body part rendering. 1 will show it completely, 0 will"
+                                                        " hide it. Only valid for GPU rendering.");
+DEFINE_double(alpha_heatmap,            0.7,            "Blending factor (range 0-1) between heatmap and original frame. 1 will only show the"
+" heatmap, 0 will only show the frame. Only valid for GPU rendering.");
+
+
 
 std::map<unsigned int, std::string> bodypartMap;
 bool blendOrigFrame;
@@ -63,11 +110,13 @@ std::map<unsigned int, std::string> getBodyPartMapFromPoseModel(const op::PoseMo
 {
     if (pose_model == op::PoseModel::COCO_18)
     {
-        return op::POSE_COCO_BODY_PARTS;
+        // return op::op::POSE_COCO_BODY_PARTS;
+        return op::getPoseBodyPartMapping(op::PoseModel::COCO_18);
     }
     else if (pose_model == op::PoseModel::MPI_15 || pose_model == op::PoseModel::MPI_15_4)
     {
-        return op::POSE_MPI_BODY_PARTS;
+        // return op::POSE_MPI_BODY_PARTS;
+        return op::getPoseBodyPartMapping(op::PoseModel::MPI_15);
     }
     else
     {
@@ -86,32 +135,18 @@ std::shared_ptr<op::OpOutputToCvMat> openPoseOpOutputToCvMat;
 bool initOpenPose(){
     ROS_INFO("[Init OpenPose] ...");
 
-    /* Prepare all classes */
-    openPoseCvMatToOpInput = std::shared_ptr<op::CvMatToOpInput>(
-            new op::CvMatToOpInput(netInputSize, numScales, (float)scaleGap)
-    );
-
-    openPoseCvMatToOpOutput = std::shared_ptr<op::CvMatToOpOutput>(
-            new op::CvMatToOpOutput(outputSize)
-    );
-
     openPosePoseExtractorCaffe = std::shared_ptr<op::PoseExtractorCaffe>(
-            new op::PoseExtractorCaffe(netInputSize, netOutputSize, outputSize, numScales, (float)scaleGap, poseModel,
-                                       modelFolder, 0)
+            new op::PoseExtractorCaffe(poseModel, modelFolder, 0)
     );
+    
 
     op::ConfigureLog::setPriorityThreshold((op::Priority)loggingLevel);
 
 
-
     openPosePoseRenderer = std::shared_ptr<op::PoseRenderer>(
-            new op::PoseRenderer(netOutputSize, outputSize, poseModel, nullptr, blendOrigFrame, (float)alphaPose)
+            new op::PoseGpuRenderer(poseModel, nullptr, (float)FLAGS_render_threshold, blendOrigFrame, (float)alphaPose)
     );
-
-    openPoseOpOutputToCvMat = std::shared_ptr<op::OpOutputToCvMat>(
-            new op::OpOutputToCvMat(outputSize)
-    );
-
+    
     /* Initialize everything */
     openPosePoseExtractorCaffe->initializationOnThread();
     openPosePoseRenderer->initializationOnThread();
@@ -155,19 +190,43 @@ bool detectPosesCallback(openpose_ros::PersonRequest& req, openpose_ros::PersonR
     cv::Mat imageCV = cv_ptr->image;
     if(imageCV.empty()) {
         op::error("Could not open or find the image");
-        //res.result = -1;
         return false;
     }
 
     // Pose Estimation
-    const auto netInputArray = openPoseCvMatToOpInput->format(imageCV);
+
+    const op::Point<int> imageSize{imageCV.cols, imageCV.rows};
+
     double scaleInputToOutput;
-    op::Array<float> outputArray;
-    std::tie(scaleInputToOutput, outputArray) = openPoseCvMatToOpOutput->format(imageCV);
-    openPosePoseExtractorCaffe->forwardPass(netInputArray, imageCV.size());
-    const auto poseKeyPoints = openPosePoseExtractorCaffe->getPoseKeyPoints();
-    openPosePoseRenderer->renderPose(outputArray, poseKeyPoints);
-    auto outputImage = openPoseOpOutputToCvMat->formatToCvMat(outputArray);
+    //op::Array<float> outputArray;
+    std::vector<double> scaleInputToNetInputs;
+	std::vector<op::Point<int>> netInputSizes;
+	op::Point<int> outputResolution;
+
+	 // outputSize
+    const auto outputSize = op::flagsToPoint(FLAGS_output_resolution, "-1x-1");
+    // netInputSize
+    const auto netInputSize = op::flagsToPoint(FLAGS_net_resolution, "-1x368");
+
+    op::ScaleAndSizeExtractor scaleAndSizeExtractor(netInputSize, outputSize, FLAGS_scale_number, FLAGS_scale_gap);
+	op::CvMatToOpInput cvMatToOpInput;
+	op::CvMatToOpOutput cvMatToOpOutput;
+	op::OpOutputToCvMat opOutputToCvMat;
+	
+
+    std::tie(scaleInputToNetInputs, netInputSizes, scaleInputToOutput, outputResolution) = scaleAndSizeExtractor.extract(imageSize);
+
+    const auto netInputArray = cvMatToOpInput.createArray(imageCV, scaleInputToNetInputs, netInputSizes);
+    auto outputArray = cvMatToOpOutput.createArray(imageCV, scaleInputToOutput, outputResolution);
+  
+    openPosePoseExtractorCaffe->forwardPass(netInputArray, imageSize, scaleInputToNetInputs);
+    const auto poseKeyPoints = openPosePoseExtractorCaffe->getPoseKeypoints();
+    const auto scaleNetToOutput = openPosePoseExtractorCaffe->getScaleNetToOutput();
+
+   
+    openPosePoseRenderer->renderPose(outputArray, poseKeyPoints, scaleInputToOutput, scaleNetToOutput);
+  
+    auto outputImage = opOutputToCvMat.formatToCvMat(outputArray);
 
     // Show Results
     /*
@@ -239,7 +298,7 @@ bool detectPosesCallback(openpose_ros::PersonRequest& req, openpose_ros::PersonR
 
 int main(int argc, char *argv[])
 {
-    google::InitGoogleLogging("openpose_ros_node");
+    // google::InitGoogleLogging("openpose_ros_node");
     ros::init(argc, argv, "openpose_ros_node");
     ros::NodeHandle local_nh("~");
     netInputSize = cv::Size(getParam(local_nh, "net_input_width", 656), getParam(local_nh, "net_input_height", 368));
@@ -248,7 +307,7 @@ int main(int argc, char *argv[])
     numScales = getParam(local_nh, "num_scales", 1);
     scaleGap = getParam(local_nh, "scale_gap", 0.3);
     numGpuStart = getParam(local_nh, "numGpuStart", 0);
-    modelFolder = getParam(local_nh, "modelFolder", std::string("/home/markus/git/jtl/Fallen Person/CMU-OpenPose/openpose/models/"));
+    modelFolder = getParam(local_nh, "modelFolder", std::string("/home/user/Pepper/fall_detection/openpose/models/"));
     poseModel = stringToPoseModel(getParam(local_nh, "poseModel", std::string("COCO")));
     bodypartMap = getBodyPartMapFromPoseModel(poseModel);
     alphaPose = 0.99; // Blending factor (range 0-1) for the body part rendering.
@@ -259,8 +318,8 @@ int main(int argc, char *argv[])
         ROS_ERROR("[Init OpenPose] ERROR");
         return 0;
     }
-    ROS_INFO("[Init OpenPose] SUCCESS");
 
+    ROS_INFO("[Init OpenPose] SUCCESS");
 
     ros::NodeHandle nh;
     ros::ServiceServer service = nh.advertiseService("detect_poses", detectPosesCallback);
