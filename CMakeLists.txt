@@ -34,14 +34,14 @@ generate_messages(DEPENDENCIES std_msgs sensor_msgs)
 find_package(CUDA REQUIRED)
 find_package(OpenCV 3.1 REQUIRED)
 
-set(CAFFE_DIR /home/markus/git/jtl/Fallen\ Person/CMU-OpenPose/openpose/3rdparty/caffe)
-set(OPENPOSE_DIR /home/markus/git/jtl/Fallen\ Person/CMU-OpenPose/openpose)
+set(CAFFE_DIR /usr/local)
+set(OPENPOSE_DIR /usr/local)
 
-set(CAFFE_INCLUDE_DIRS ${CAFFE_DIR}/distribute/include)
-set(CAFFE_LINK_LIBRARY ${CAFFE_DIR}/distribute/lib/libcaffe.so)
+set(CAFFE_INCLUDE_DIRS ${CAFFE_DIR}/include)
+set(CAFFE_LINK_LIBRARY ${CAFFE_DIR}/lib/libcaffe.so)
 
 set(OPENPOSE_INCLUDE_DIRS ${OPENPOSE_DIR}/include)
-set(OPENPOSE_LINK_LIBRARY ${OPENPOSE_DIR}/build/lib/libopenpose.so)
+set(OPENPOSE_LINK_LIBRARY ${OPENPOSE_DIR}/lib/libopenpose.so)
 
 catkin_package(
 #  INCLUDE_DIRS include
